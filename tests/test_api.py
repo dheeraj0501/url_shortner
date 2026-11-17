@@ -1,77 +1,80 @@
 from fastapi.testclient import TestClient
 
-from agentic_system.api import app
-from agentic_system.models import ArchitectureGeneration
-from agentic_system.workflow import llm_client
+from agentic_system.api import create_app
+from agentic_system.service import ShortLinkService
 
 
-def test_llm_client_requests_schema_constrained_architecture(monkeypatch):
-    expected = ArchitectureGeneration(
-        summary="A service architecture.",
-        components=[],
-        data_flow=[],
-        apis=[],
-        risks=[],
-        design_decisions=[],
-        open_questions=[],
-    )
-
-    class StructuredClient:
-        def invoke(self, prompt):
-            return expected
-
-    class FakeClient:
-        def with_structured_output(self, schema, method):
-            assert schema is ArchitectureGeneration
-            assert method == "json_schema"
-            return StructuredClient()
-
-    monkeypatch.setattr(llm_client, "enabled", True)
-    monkeypatch.setattr(llm_client, "client", FakeClient())
-
-    assert llm_client.generate_structured("Design an architecture") is expected
+def make_client(tmp_path):
+    service = ShortLinkService(tmp_path / "test.sqlite3")
+    return TestClient(create_app(service))
 
 
-def test_analyze_requirement_returns_generated_architecture(monkeypatch):
-    requirement = "Build a library catalog with search and item checkout."
-    generated_architecture = {
-        "summary": "A library catalog with searchable inventory and checkout workflows.",
-        "components": ["Catalog API", "Inventory database", "Search index"],
-        "data_flow": ["Search the catalog", "Reserve an available item", "Record checkout"],
-        "apis": ["GET /api/v1/items", "POST /api/v1/items/{item_id}/checkout"],
-        "risks": ["Search results may be stale after an item is checked out."],
-        "design_decisions": ["Index searchable catalog fields."],
-        "open_questions": ["Should reservations expire automatically?"],
-    }
-    prompts = []
-
-    def generate_architecture(prompt):
-        prompts.append(prompt)
-        return ArchitectureGeneration.model_validate(generated_architecture)
-
-    monkeypatch.setattr(llm_client, "generate_structured", generate_architecture)
-    monkeypatch.setattr(llm_client, "generate", lambda prompt: "Plan generated.")
-
-    response = TestClient(app).post(
-        "/api/v1/requirements/analyze",
-        json={"requirement": requirement},
-    )
+def test_home_page_is_a_runnable_demo(tmp_path):
+    response = make_client(tmp_path).get("/")
 
     assert response.status_code == 200
-    result = response.json()
-    assert result["status"] == "validated"
-    assert result["architecture"] == generated_architecture
-    assert requirement in prompts[0]
-    assert "Derive every field from this requirement" in prompts[0]
+    assert "Shortlink" in response.text
+    assert "/api/v1/links" in response.text
 
 
-def test_swagger_exposes_only_workflow_endpoints():
-    schema = TestClient(app).get("/openapi.json").json()
+def test_create_redirect_and_analytics_flow(tmp_path):
+    client = make_client(tmp_path)
 
-    assert set(schema["paths"]) == {"/health", "/api/v1/requirements/analyze"}
-    assert set(schema["components"]["schemas"]) == {
-        "HTTPValidationError",
-        "RequirementRequest",
-        "ValidationError",
-        "WorkflowResponse",
+    create_response = client.post(
+        "/api/v1/links",
+        json={"url": "https://example.com/articles/hello"},
+    )
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    short_code = created["short_code"]
+    assert len(short_code) == 8
+    assert created["original_url"] == "https://example.com/articles/hello"
+    assert created["short_url"] == f"http://testserver/r/{short_code}"
+    assert created["click_count"] == 0
+
+    redirect_response = client.get(f"/r/{short_code}", follow_redirects=False)
+    assert redirect_response.status_code == 302
+    assert redirect_response.headers["location"] == "https://example.com/articles/hello"
+
+    analytics_response = client.get(f"/api/v1/analytics/{short_code}")
+    assert analytics_response.status_code == 200
+    assert analytics_response.json()["click_count"] == 1
+
+
+def test_link_persists_across_service_instances(tmp_path):
+    database_path = tmp_path / "persistent.sqlite3"
+    first_service = ShortLinkService(database_path)
+    created = first_service.create("https://example.com/persist")
+
+    second_service = ShortLinkService(database_path)
+
+    assert second_service.get(created.short_code).original_url == "https://example.com/persist"
+
+
+def test_invalid_urls_are_rejected(tmp_path):
+    response = make_client(tmp_path).post(
+        "/api/v1/links",
+        json={"url": "ftp://example.com/file"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_unknown_short_code_returns_not_found(tmp_path):
+    client = make_client(tmp_path)
+
+    assert client.get("/r/unknown").status_code == 404
+    assert client.get("/api/v1/analytics/unknown").status_code == 404
+
+
+def test_openapi_documents_shortener_endpoints(tmp_path):
+    schema = make_client(tmp_path).get("/openapi.json").json()
+
+    assert set(schema["paths"]) == {
+        "/health",
+        "/api/v1/links",
+        "/api/v1/links/{short_code}",
+        "/api/v1/analytics/{short_code}",
+        "/r/{short_code}",
     }

@@ -1,17 +1,18 @@
-# Ignore dependency folders
+# Dependencies, local environment, and secrets
 node_modules/
 venv/
-
-# Ignore environment and secret files
+.venv/
 .env
+__pycache__/
+.pytest_cache/
+*.py[cod]
 
-# Ignore log and build files
+# Local database and generated build/log files
+data/
 *.log
 dist/
 build/
 
-# Ignore OS-specific files
+# OS-specific files
 .DS_Store
 Thumbs.db
-.env
-.venv

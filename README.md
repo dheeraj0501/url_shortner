@@ -1,70 +1,100 @@
-# Agentic Engineering System with LangGraph
+# Shortlink
 
-This workspace contains a working prototype of an agentic software engineering system built around a LangGraph workflow. It demonstrates requirement interpretation, task decomposition, dependency-aware orchestration, generated engineering artifacts, and validation guardrails.
+A runnable URL shortener demo built with FastAPI and SQLite. It creates short links, redirects visitors to their original destinations, and counts successful redirects. A small browser form is available at the root page, and the API is explorable through Swagger UI.
 
-## Example input
-The prototype accepts software requirements as input and produces a general engineering plan.
+This is a demo application, not a production service.
 
-## What the system demonstrates
-- Requirement understanding and ambiguity detection
-- Structured task decomposition with dependencies
-- Architecture planning for a real engineering system
-- Multi-step orchestration through a LangGraph state machine
-- Generation of artifact sketches and validation strategy
-- Human-controlled autonomy and review gates
+## Candidate approach
 
-## Architecture overview
-The workflow is implemented in `agentic_system/workflow.py` and includes these phases:
+I kept the scope centered on the core shortener flow:
 
-1. Analyze requirement
-2. Decompose tasks
-3. Design architecture
-4. Build execution plan
-5. Generate artifacts
-6. Validate and mark workflow as complete
+1. Accept and validate an absolute HTTP or HTTPS URL.
+2. Generate a compact, random code and persist it with the original URL.
+3. Redirect a request for that code and increment its click count.
+4. Expose link details and basic analytics so the flow can be demonstrated and tested.
 
-Key components:
-- `agentic_system/workflow.py` - orchestration logic
-- `agentic_system/models.py` - task and architecture data structures
-- `agentic_system/api.py` - health and requirement-analysis endpoints
-- `tests/test_api.py` - API behavior tests
-- `docs/architecture.md` - architecture and risk notes
+The implementation separates HTTP handling (`agentic_system/api.py`), request/response schemas (`agentic_system/models.py`), and persistence and link behavior (`agentic_system/service.py`). SQLite and Python's standard library keep local setup small.
 
-## Example scenarios
-The prototype also includes sample requirement types in `sample_requirements.py`:
-- Greenfield: a new software service
-- Brownfield: enhancement of current behavior
-- Ambiguous: underspecified product requirement
+## Key decisions, assumptions, and tradeoffs
 
-## Execution model
-The system uses a dependency graph rather than a simple linear pipeline. Each task has explicit dependencies and sequencing, which allows the workflow to coordinate multiple steps and preserve cross-step execution flow.
+- **Random eight-character codes:** Codes are easy to share and avoid exposing sequential database IDs. Collisions are handled by a uniqueness constraint and retry. This is adequate for a small demo, not a globally coordinated allocation strategy.
+- **SQLite persistence:** Links and click counts survive restarts without a separate database service. SQLite is appropriate for a single-instance demo; high write concurrency or multi-instance deployments would warrant a managed database.
+- **Count redirects as clicks:** A click is counted when the redirect is successfully resolved. There is no event history, bot filtering, unique-visitor tracking, or analytics aggregation.
+- **HTTP 302 redirects:** Redirects are temporary so browsers and intermediaries are less likely to cache them permanently.
+- **Local demo, no authentication:** Anyone who can reach the app can create links and inspect counts. Authentication, quotas, abuse prevention, expiration, and custom aliases are outside scope.
+- **No LLM or external API key:** URL creation, redirects, and analytics run locally; only Python dependencies are required.
+- **Input validation:** The API accepts only absolute HTTP/HTTPS URLs. The redirect destination is the user-provided original URL; the application does not fetch it.
 
-## Validation approach
-The prototype validates correctness through:
-- Tests for requirement analysis and API behavior
-- Human approval gate before production rollout
+See [docs/architecture.md](docs/architecture.md) for the routes, data flow, and implementation details.
 
-## Setup
-From the workspace root:
+## Requirements
 
-1. Install dependencies:
-   python -m pip install -r requirements.txt
-2. Enable requirement-specific architecture generation:
-   `$env:USE_LLM = 'true'`
-   `$env:GEMINI_API_KEY = '<your Gemini API key>'`
-   (`GOOGLE_API_KEY` is also supported.)
-3. Run the workflow demo:
-   python demo.py
-4. Run tests:
-   $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'; python -m pytest -q
-5. Run with uvicorn
-   uvicorn agentic_system.api:app --host 127.0.0.1 --port 8000
+- Python 3.10+
+- pip
 
-The architecture summary, components, data flow, APIs, risks, design decisions, and open questions are generated from each submitted requirement. If the LLM is not configured or returns an invalid architecture, analysis reports an error instead of returning a generic static architecture.
+## Setup and run (Windows PowerShell)
 
-## Known limitations
-This is a prototype intended to demonstrate agentic engineering orchestration rather than a full production deployment. Workflow outputs are illustrative and require review before use in a production system.
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python run_api.py
+```
 
-# This is a multi agent system
+Open:
 
-Building this project to run multi agent system for SRE
+- Demo form: <http://127.0.0.1:8000/>
+- Swagger UI: <http://127.0.0.1:8000/docs>
+- Health check: <http://127.0.0.1:8000/health>
+
+The SQLite database is created at `data/shortener.db` by default. Override its location with `SHORTENER_DB_PATH` before starting the server:
+
+```powershell
+$env:SHORTENER_DB_PATH = 'C:\path\to\shortener.db'
+python run_api.py
+```
+
+## Try it with the demo client
+
+Start the server in one terminal, then in another:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python demo.py https://example.com/some/long/path
+```
+
+The client prints the short URL. Open it in a browser to follow the redirect.
+
+## API
+
+### Create a short link
+
+`POST /api/v1/links`
+
+```json
+{
+  "url": "https://example.com/some/long/path"
+}
+```
+
+Returns `201 Created` with the short code, short URL, original URL, creation time, and current click count.
+
+### Follow a short link
+
+`GET /r/{short_code}`
+
+Returns a `302` redirect and increments the click count. Unknown codes return `404`.
+
+### Read link details and analytics
+
+- `GET /api/v1/links/{short_code}` returns link metadata and count.
+- `GET /api/v1/analytics/{short_code}` returns the basic click analytics.
+
+## Test
+
+```powershell
+$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD = '1'
+python -m pytest -q
+```
+
+Tests use temporary SQLite databases and do not modify the demo database.
