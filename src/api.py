@@ -6,8 +6,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from agentic_system.models import AnalyticsResponse, CreateLinkRequest, LinkResponse
-from agentic_system.service import ShortLinkService
+from src.models import AnalyticsResponse, CreateLinkRequest, LinkResponse
+from src.service import ShortLinkService
 
 
 DEMO_PAGE = """<!doctype html>

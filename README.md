@@ -13,7 +13,7 @@ I kept the scope centered on the core shortener flow:
 3. Redirect a request for that code and increment its click count.
 4. Expose link details and basic analytics so the flow can be demonstrated and tested.
 
-The implementation separates HTTP handling (`agentic_system/api.py`), request/response schemas (`agentic_system/models.py`), and persistence and link behavior (`agentic_system/service.py`). SQLite and Python's standard library keep local setup small.
+The implementation separates HTTP handling (`src/api.py`), request/response schemas (`src/models.py`), and persistence and link behavior (`src/service.py`). SQLite and Python's standard library keep local setup small.
 
 ## Key decisions, assumptions, and tradeoffs
 

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from agentic_system.api import create_app
-from agentic_system.service import ShortLinkService
+from src.api import create_app
+from src.service import ShortLinkService
 
 
 def make_client(tmp_path):

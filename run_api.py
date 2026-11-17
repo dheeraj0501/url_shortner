@@ -1,6 +1,6 @@
 import uvicorn
 
-from agentic_system.api import app
+from src.api import app
 
 
 if __name__ == "__main__":
